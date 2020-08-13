@@ -1,0 +1,276 @@
+/* SECTION 1: Options */
+
+options {
+    IGNORE_CASE = true;
+} 
+
+/* SECTION 2: User Code */
+
+PARSER_BEGIN(HannahParser)
+
+  public class HannahParser {
+
+    /* Entry point */
+    public static void main(String[] args){
+
+      /* Initialisation */    
+      HannahParser parser;
+
+      /* Getting Input from command line - if no arguments included in call*/
+
+      if (args.length == 0){
+
+        System.out.println("Please enter input...");
+        parser = new HannahParser(System.in);
+
+      /* Getting Input from file */
+
+      } else if (args.length == 1) {
+
+        /* Check that file is valid */
+        System.out.println("Reading from file " + args[0] + " . . .");
+        try {
+
+          parser = new HannahParser(new java.io.FileInputStream(args[0]));
+
+        } catch (java.io.FileNotFoundException e) {
+
+          System.err.println("Problem opening/retrieving file " + args[0] + ". Error cause: " + e.getMessage());
+          return;
+        }
+
+      } else {
+
+        System.out.println("Unsuccessful. Please try again!");
+        System.out.println("    java HannahParser < inputfile.ccl");
+        System.out.println("or");
+        System.out.println("    java HannahParser inputfile.ccl");
+        System.out.println("or for stdin:");
+        System.out.println("    java HannahParser");
+        return;
+      }
+      try {
+        /* The tokeniser is initialisated, so it must now keep reading tokens until it hits EOF */
+        
+        /* To get Tokens ( Parsing the file / Standard input) */
+        parser.program();
+        System.out.println("HannahParser: program parsed successfully.");
+        
+      } catch (ParseException e) {
+        System.out.println("HannahParser: program parsed unsuccessfully");
+        System.out.println(e.getMessage());
+
+      } catch(TokenMgrError e) {
+        System.out.println("HannahParser: program parsed unsuccessfully");
+        System.out.println(e.getMessage());
+      }
+   }
+}
+
+PARSER_END(HannahParser)
+
+/* Section 3: Tokens */
+
+// Token manager declaration
+
+TOKEN_MGR_DECLS :
+{
+    static int commentNesting = 0;
+}
+
+ SKIP : /* Skip Characters */
+{
+    " "
+  | "\t"
+  | "\n"
+  | "\r"
+  | "\r\n"
+  | "\f"
+}
+
+SKIP : { // Single line comments
+    < "//" (~["\n","\r"])* ("\n" | "\r" | "\r\n") >
+}
+
+SKIP : /* Multi line comments */
+{
+    "/*" { commentNesting++; } : IN_COMMENT
+}
+
+<IN_COMMENT> SKIP :
+{
+    "/*" { commentNesting++; }
+  | "*/" { commentNesting--;
+            if (commentNesting ==0)
+                SwitchTo(DEFAULT);
+         }
+  /* OTHER (UNKNOWN) CHARACTERS */
+  | < ~[] >
+}
+
+TOKEN : { /* Keywords */
+      < VAR : "var" >
+    | < CONST : "const" >
+    | < RETURN : "return" >
+    | < INT : "integer" >
+    | < BOOLEAN : "boolean" >
+    | < VOID : "void" >
+    | < MAIN : "main" >
+    | < IF : "if" >
+    | < ELSE : "else" >
+    | < TRUE : "true" >
+    | < FALSE : "false" >
+    | < WHILE : "while" >
+    | < SKIP_TOKEN : "skip" >
+}
+
+TOKEN : { /* Punctuation */ 
+      < COMMA : "," >
+    | < COLON : ":" >
+    | < SEMICOLON : ";" >
+    | < ASSIGN : "=" >
+    | < LBRACE : "{" >
+    | < RBRACE : "}" >
+    | < LPARENS : "(" >
+    | < RPARENS : ")" >
+}
+
+TOKEN : { /* Operators */
+      < PLUS_SIGN : "+" >
+    | < MINUS_SIGN : "-" >
+    | < NOT : "~" >
+    | < OR : "||" >
+    | < AND : "&&" >
+    | < EQUAL : "==" >
+    | < NOT_EQUAL : "!=" >
+    | < LESS_THAN : "<" >
+    | < LESS_THAN_EQUAL : "<=" >
+    | < GREATER_THAN : ">" >
+    | < GREATER_THAN_EQUAL : ">=" >
+}
+
+TOKEN : { /* Numbers and identifiers */
+      < #DIGIT : ["0"-"9"] >
+    | < #CHAR : ["a"-"z", "A"-"Z"] >
+    | < INTEGER : (<MINUS_SIGN>)? ["1"-"9"] (<DIGIT>)* | "0" >
+    | < ID : <CHAR> (<CHAR>| <DIGIT> | "_")* >
+}
+
+TOKEN : { /* Everything Else */
+    < OTHER: ~[] >
+} 
+
+/* Section 4 - Production and Grammar Rules */
+
+void program() : {} {
+   decl_list() function_list() main() <EOF>
+}
+
+void main() : {} {
+    <MAIN> <LBRACE> decl_list() statement_block() <RBRACE>
+}
+
+void decl_list() : {} {
+   (decl() <SEMICOLON> decl_list())?
+}
+
+void decl() : {} {
+    var_decl() | const_decl() 
+}
+
+void var_decl() : {} {
+   <VAR> <ID> <COLON> type()
+}
+
+void const_decl() : {} {
+   <CONST> <ID> <COLON> type() <ASSIGN> expression()
+}
+
+void function_list() : {} {
+    (function() function_list())?
+}
+
+void function() : {} {
+    type() <ID> <LPARENS> parameter_list() <RPARENS> <LBRACE>
+    decl_list()
+    statement_block()
+    <RETURN> <LPARENS> (expression())? <RPARENS> <SEMICOLON>
+    <RBRACE>
+}
+
+void type() : {} {
+    (<INTEGER> | <BOOLEAN> | <VOID> | <INT>)
+}
+
+void parameter_list() : {} {
+    (nemp_parameter_list())?
+}
+
+void nemp_parameter_list() : {} {
+    <ID> <COLON> type() (<COMMA> nemp_parameter_list())?
+}
+
+void statement_block() : {} {
+    (statement() statement_block())?
+}
+
+void other_statement() : {} {
+    <ASSIGN> expression() <SEMICOLON> 
+    | <LPARENS> arg_list() <RPARENS> <SEMICOLON>
+}
+
+void statement() : {} {
+      <ID> other_statement()
+    | <LBRACE> statement_block() <RBRACE>
+    | <IF> condition() <LBRACE> statement_block() <RBRACE> <ELSE> <LBRACE> statement_block() <RBRACE>
+    | <WHILE> condition() <LBRACE> statement_block() <RBRACE>
+    | <SKIP_TOKEN> <SEMICOLON>
+}
+
+void expression() : {} {
+	fragment() (binary_arith_op() fragment())*
+}
+
+void fragment() : {} {
+    (<MINUS_SIGN>)* <ID> (<LPARENS> arg_list() <RPARENS>)*
+  | <INTEGER>
+  | <TRUE>
+  | <FALSE>
+}
+
+void binary_arith_op() : {} {
+    <PLUS_SIGN>
+  | <MINUS_SIGN>   
+}
+
+void and_or() : {} {
+     (<OR> | <AND>)
+}
+
+void other_condition() : {} {
+	    and_or() condition() other_condition() | {}
+}
+
+void condition() : {} {
+      <NOT> condition() other_condition()
+    | <LPARENS> condition() <RPARENS> other_condition()
+    | fragment() comp_op() expression() other_condition()
+}
+
+void comp_op() : {} {
+      <EQUAL>
+    | <NOT_EQUAL>
+    | <LESS_THAN>
+    | <LESS_THAN_EQUAL>
+    | <GREATER_THAN>
+    | <GREATER_THAN_EQUAL>
+}
+
+void arg_list() : {} {
+    nemp_arg_list() | {}
+}
+
+void nemp_arg_list() : {}
+{
+    <ID> (<COMMA> nemp_arg_list() | {})
+}
