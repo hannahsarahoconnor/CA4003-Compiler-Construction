@@ -1,0 +1,371 @@
+/*******************************
+ ***** SECTION 1 - OPTIONS *****
+ *******************************/
+
+options
+{
+    JAVA_UNICODE_ESCAPE = true;
+    IGNORE_CASE = true;
+    MULTI = true;
+    VISITOR = true;
+    NODE_DEFAULT_VOID = true;
+    NODE_PREFIX="";
+    //DEBUG_PARSER=true;
+    
+}
+
+/*********************************
+ ***** SECTION 2 - USER CODE *****
+ *********************************/
+
+PARSER_BEGIN(HannahParser)
+import java.io.*;
+
+  public class HannahParser {
+
+    /* Symbol Table Initialisation */
+    public static SymbolTable symbolTable = new SymbolTable();
+
+    /* Semantic Analyser Initialisation */
+    public static SemanticAnalysis semanticAnalysis = new SemanticAnalysis();
+
+    /* IntermediateRep Initialisation */
+    public static ThreeAddressCodeBuilder threeAddressCodeBuilder = new ThreeAddressCodeBuilder();
+    
+    // set global scope for Symbol table
+    public static String scope = "global";
+    
+    public static void main(String[] args) {
+
+       /* Initialisation */    
+      HannahParser parser;
+       
+      if (args.length == 0){
+
+        System.out.println("Please enter input...");
+        parser = new HannahParser(System.in);
+
+       /* Getting Input from file */
+
+      } else if (args.length == 1) {
+
+        /* Check that file is valid */
+        System.out.println("Reading from file " + args[0] + " . . .");
+        try {
+         parser = new HannahParser(new java.io.FileInputStream(args[0]));
+        
+        } catch (java.io.FileNotFoundException e) {
+          System.err.println("Problem opening/retrieving file " + args[0] + ". Error cause: " + e.getMessage());
+          return;
+        }
+
+      } else {
+
+         System.out.println("Unsuccessful. Please try again!");
+         System.out.println("    java HannahParser < inputfile.ccl");
+         System.out.println("or");
+         System.out.println("    java HannahParser inputfile.ccl");
+         System.out.println("or for stdin:");
+         System.out.println("    java HannahParser");
+         return;
+      }
+      try {
+        /* The tokeniser is initialisated, so it must now keep reading tokens until it hits EOF */
+        
+        /* To get Tokens ( Parsing the file / Standard input) */
+        System.out.println("---------------------------------");
+        System.out.println("PART 1 - abstract syntax tree.");
+        System.out.println("---------------------------------");
+        SimpleNode root = parser.program();
+        root.dump("");
+        System.out.println("---------------------------------");
+
+        System.out.println("PART 2 - symbol table.");
+        System.out.println("---------------------------------");
+        symbolTable.printTable();
+        System.out.println("---------------------------------");
+        System.out.println("PART 3 - semantic analyser.");
+        System.out.println("---------------------------------");
+        root.jjtAccept(semanticAnalysis, symbolTable);
+
+        System.out.println("---------------------------------");
+        System.out.println("PART 4 - intermediate representation.");
+        System.out.println("---------------------------------");
+        String filename = args[0].substring(0, args[0].lastIndexOf(".")) + ".ir";
+            try {
+                PrintStream out = new PrintStream(new FileOutputStream(filename)); 
+                System.setOut(out);
+                }
+            catch (FileNotFoundException e) {
+                e.printStackTrace();
+            }
+        root.jjtAccept(threeAddressCodeBuilder, null);
+        // cat the contents of the generated .ir file!
+        //Process p;
+        //p = Runtime.getRuntime().exec("/usr/bin/cat *.ir");
+
+
+
+        
+      } catch (ParseException e) {
+        System.out.println("HannahParser: program parsed unsuccessfully");
+        System.out.println(e.getMessage());
+
+      } catch(TokenMgrError e) {
+        System.out.println("HannahParser: program parsed unsuccessfully");
+        System.out.println(e.getMessage());
+      }
+   }
+}
+
+PARSER_END(HannahParser)
+
+/*************************************
+ ***** SECTION 3 - TOKEN MANAGER *****
+ *************************************/
+
+// Token manager declaration
+
+TOKEN_MGR_DECLS :
+{
+    static int commentNesting = 0;
+}
+
+ SKIP : /* Skip Characters */
+{
+    " "
+  | "\t"
+  | "\n"
+  | "\r"
+  | "\r\n"
+  | "\f"
+}
+
+SKIP : { // Single line comments
+    < "//" (~["\n","\r"])* ("\n" | "\r" | "\r\n") >
+}
+
+SKIP : /* Multi line comments */
+{
+    "/*" { commentNesting++; } : IN_COMMENT
+}
+
+<IN_COMMENT> SKIP :
+{
+    "/*" { commentNesting++; }
+  | "*/" { commentNesting--;
+            if (commentNesting ==0)
+                SwitchTo(DEFAULT);
+         }
+  /* OTHER (UNKNOWN) CHARACTERS */
+  | < ~[] >
+}
+
+TOKEN : { /* Keywords */
+      < VAR : "var" >
+    | < CONST : "const" >
+    | < RETURN : "return" >
+    | < INT : "integer" >
+    | < BOOLEAN : "boolean" >
+    | < VOID : "void" >
+    | < MAIN : "main" >
+    | < IF : "if" >
+    | < ELSE : "else" >
+    | < TRUE : "true" >
+    | < FALSE : "false" >
+    | < WHILE : "while" >
+    | < SKIP_TOKEN : "skip" >
+}
+
+TOKEN : { /* Punctuation */ 
+      < COMMA : "," >
+    | <UNDERSCORE : "_" >
+    | < COLON : ":" >
+    | < SEMICOLON : ";" >
+    | < ASSIGN : "=" >
+    | < LBRACE : "{" >
+    | < RBRACE : "}" >
+    | < LPARENS : "(" >
+    | < RPARENS : ")" >
+}
+
+TOKEN : { /* Operators */
+      < PLUS_SIGN : "+" >
+    | < MINUS_SIGN : "-" >
+    | < NOT : "~" >
+    | < OR : "||" >
+    | < AND : "&&" >
+    | < EQUAL : "==" >
+    | < NOT_EQUAL : "!=" >
+    | < LESS_THAN : "<" >
+    | < LESS_THAN_EQUAL : "<=" >
+    | < GREATER_THAN : ">" >
+    | < GREATER_THAN_EQUAL : ">=" >
+}
+
+TOKEN : { /* Numbers and identifiers */
+      < #DIGIT : ["0"-"9"] >
+    | < #CHAR : ["a"-"z", "A"-"Z"] >
+    | < INTEGER : (<MINUS_SIGN>)? ["1"-"9"] (<DIGIT>)* | "0" >
+    | < ID : <CHAR> (<CHAR>| <DIGIT> | <UNDERSCORE>)* >
+}
+
+TOKEN : { /* Everything Else */
+    < OTHER: ~[] >
+} 
+
+/****************************************************
+ ***** SECTION 4 - GRAMMAR AND PRODUCTION RULES *****
+ ***************************************************/
+
+
+SimpleNode program() #program : {}
+{
+  decl_list() function_list() main() <EOF> {return jjtThis;}
+}
+
+void main() #main : {} {
+    {scope = "main";}(
+    <MAIN> <LBRACE> decl_list() statement_block() <RBRACE>)
+}
+
+String id() #id : {Token token;} {
+  token = <ID> {
+    jjtThis.value = token.image;
+    return token.image;
+  }
+}
+
+void decl_list() : {} {
+   (decl() <SEMICOLON> decl_list())?
+}
+
+void decl() : {} {
+    var_decl() | const_decl() 
+}
+
+// Token token
+void var_decl() #var_decl : {Token token; String id; String type;} {
+    // can we add #variable(1) to the end of this?
+    token = <VAR> id = id() <COLON> type = type()
+    {
+      jjtThis.value = token.image;
+      symbolTable.put(id, type, "variable", scope);
+    }
+}
+
+void const_decl() #const_decl : {Token token; String id; String type;} {
+   token = <CONST> id = id() <COLON> type = type() <ASSIGN> expression() {
+     jjtThis.value = token.image;
+     symbolTable.put(id, type, "constant", scope);
+   }
+}
+
+void function_list() : {} {
+    (function() function_list())?
+}
+
+void function() #function : {String id; String type;} {
+    // function scope !
+    (type = type() id = id() {symbolTable.put(id, type, "function", scope); 
+    if(!scope.equals("global")) {
+        symbolTable.put(id, type, "function", "global");
+        }
+     scope = id;
+     } 
+    <LPARENS> parameter_list() <RPARENS> <LBRACE>
+    decl_list()
+    statement_block()
+    <RETURN> <LPARENS> (expression())? <RPARENS> <SEMICOLON> #return_statement
+    <RBRACE>)
+}
+
+String type() #type : {Token token;} {
+   (token = <INTEGER> | token = <VOID> | token = <BOOLEAN> | token = <INT>) {jjtThis.value = token.image; return token.image;}
+}
+
+void parameter_list() : {} {
+    (nemp_parameter_list() | {})
+}
+
+void other_nemp_parameter_list() : {} {
+   (<COMMA> nemp_parameter_list() | {})
+}
+
+void nemp_parameter_list() #parameter(>1) : {String id; String type;} {
+    id = id() <COLON> type = type() other_nemp_parameter_list() {
+      symbolTable.put(id, type, "parameter", scope);
+    }
+}
+
+void statement_block() : {} {
+    (statement() statement_block())?
+}
+
+void other_statement() : {Token token;} {
+     token = <ASSIGN> expression() <SEMICOLON> {jjtThis.value = token.image;} #assign
+   | token = <LPARENS> arg_list() <RPARENS> <SEMICOLON> {jjtThis.value = token.image;} #function_call
+}
+
+void statement() #statement : {Token token;} {
+      id() other_statement()
+    | <LBRACE> statement_block() <RBRACE>
+    | token = <IF> condition() <LBRACE> statement_block() <RBRACE> <ELSE> <LBRACE> statement_block() <RBRACE> {jjtThis.value = token.image;} 
+    | token = <WHILE> condition() <LBRACE> statement_block() <RBRACE> {jjtThis.value = token.image;} 
+    | <SKIP_TOKEN> <SEMICOLON>
+}
+
+void expression() : {} {
+	fragment() (binary_arith_op() fragment())*
+}
+
+void fragment() : {Token token;} {
+    <MINUS_SIGN> id() #minus_op
+  | token = <INTEGER> {jjtThis.value = token.image;} #integer
+  | token = <TRUE> {jjtThis.value = token.image;} #bool 
+  | token = <FALSE> {jjtThis.value = token.image;} #bool
+  | (token = <ID> [<LPARENS> arg_list() <RPARENS>] {jjtThis.value = token.image;} ) #function_return
+}
+
+
+void binary_arith_op() : {Token token;} {
+     token = <PLUS_SIGN> {jjtThis.value = token.image;} #arith_ops
+   | token = <MINUS_SIGN> {jjtThis.value = token.image;} #arith_ops
+}
+
+void and_or() : {Token token;} {
+    token = <OR> {jjtThis.value = token.image;} #binary_ops
+  | token = <AND> {jjtThis.value = token.image;} #binary_ops
+}
+
+void other_condition() : {} {
+	and_or() condition() other_condition() | {}
+}
+
+void condition() : {} {
+      <NOT> condition() other_condition()
+    | <LPARENS> condition() <RPARENS> other_condition()
+    | fragment() comp_op() expression() other_condition()
+}
+
+void comp_op() #comparison : {Token token;} {
+      token = <EQUAL> {jjtThis.value = token.image;} #equal_op
+    | token = <NOT_EQUAL> {jjtThis.value = token.image;} #not_equal_op
+    | token = <LESS_THAN> {jjtThis.value = token.image;} #less_than_op
+    | token = <LESS_THAN_EQUAL> {jjtThis.value = token.image;} #less_than_equal_op
+    | token = <GREATER_THAN> {jjtThis.value = token.image;} #greater_than_op
+    | token = <GREATER_THAN_EQUAL> {jjtThis.value = token.image;} #greater_than_equal_op
+}
+
+void arg_list() #arg_list : {} {
+   (other_arg_list())?
+}
+
+void other_arg_list() : {} {
+  (id() nemp_arg_list())
+}
+
+void nemp_arg_list() #arg_list : {}
+{
+  (<COMMA> other_arg_list())?
+}
